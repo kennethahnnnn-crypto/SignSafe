@@ -15,14 +15,14 @@ app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 
 app.config['SECRET_KEY'] = 'ClauseMateSecretKey'
 
-# --- DATABASE ---
+# --- DATABASE SETUP ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///clausemate.db' 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- AI ---
+# --- AI SETUP ---
 API_KEY = os.environ.get("GEMINI_API_KEY", "PASTE_YOUR_KEY_HERE_IF_LOCAL")
 if API_KEY:
     genai.configure(api_key=API_KEY)
@@ -60,6 +60,7 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 # --- ROUTES ---
+
 @app.route('/')
 def home():
     if current_user.is_authenticated:
@@ -81,7 +82,7 @@ def login():
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('로그인 실패')
+        flash('로그인 실패: 이메일이나 비밀번호를 확인하세요.')
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -142,16 +143,15 @@ def review():
 
     if not prompt_content: return jsonify({"error": "분석할 내용이 없습니다."}), 400
 
-    # --- UPDATED PROMPT FOR LOCATION TRACKING ---
     base_prompt = """
     You are a highly experienced Korean Contract Lawyer (변호사). 
     Review the provided contract materials (Images, PDFs, Text) as ONE complete document.
     
     CRITICAL INSTRUCTIONS:
     1. **EXHAUSTIVE SEARCH:** Find EVERY SINGLE clause that poses a risk. Do not limit the count.
-    2. **LOCATION IS MANDATORY:** You MUST state the Article Number (e.g. "제5조 2항") or Page Number. If the text is raw and has no numbers, quote the start of the sentence.
+    2. **LOCATION TRACKING:** You MUST identify WHERE the clause is (e.g., "제5조 2항", "Page 1"). If unsure, write "위치 확인 필요".
     3. **LANGUAGE:** All output MUST be in natural KOREAN (한국어).
-    4. **FORMAT:** Return ONLY ONE valid JSON object.
+    4. **FORMAT:** Return ONLY ONE valid JSON object. Do not add extra text.
     
     OUTPUT JSON (No Markdown):
     {
@@ -160,14 +160,14 @@ def review():
         "score_comment": "One sentence summary of risk.",
         "analysis": [
             {
-                "location": "제3조 (보증금) OR [Page 1]", 
+                "location": "제3조 (보증금)", 
                 "type": "위험", 
                 "original": "Original text",
                 "reason": "Why is this dangerous? (Korean)",
                 "fix": "Fair rewrite (Korean)"
             },
             {
-                "location": "특약사항 2번",
+                "location": "특약사항",
                 "type": "주의",
                 "original": "Original text",
                 "reason": "Reason (Korean)",
@@ -182,7 +182,7 @@ def review():
         response = model.generate_content(prompt_content)
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
         
-        # Fix "Extra Data" Bug (Find first { and last })
+        # --- CRITICAL JSON CLEANING LOGIC ---
         start = clean_json.find('{')
         end = clean_json.rfind('}') + 1
         final_json_str = clean_json[start:end]
@@ -205,6 +205,33 @@ def review():
         print(f"Error: {e}")
         return jsonify({"error": f"분석 오류: {str(e)}"}), 500
 
+# --- ADMIN PANEL ROUTE (Full Version) ---
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    # Only 'admin@clausemate.app' can see this
+    if current_user.email != 'admin@clausemate.app':
+        return "<h3>🚫 Access Denied: Admins Only</h3>", 403
+    
+    users = User.query.all()
+    contracts = Contract.query.all()
+    
+    html = f"""
+    <body style='font-family:sans-serif; padding:40px; max-width:800px; margin:0 auto;'>
+        <h1>👥 Admin Panel</h1>
+        <p><b>Total Users:</b> {len(users)} | <b>Total Contracts Analyzed:</b> {len(contracts)}</p>
+        <hr>
+        <h3>User List</h3>
+        <table border='1' cellpadding='10' style='border-collapse:collapse; width:100%;'>
+            <tr style='background:#f0f0f0;'><th>ID</th><th>Name</th><th>Email</th><th>Contracts Analyzed</th></tr>
+    """
+    for u in users:
+        c_count = Contract.query.filter_by(user_id=u.id).count()
+        html += f"<tr><td>{u.id}</td><td>{u.name}</td><td>{u.email}</td><td>{c_count}</td></tr>"
+    
+    html += "</table><br><a href='/dashboard'>← Back to Dashboard</a></body>"
+    return html
+
 # --- MARKETING ROUTES ---
 @app.route('/log_ab', methods=['POST'])
 def log_ab():
@@ -216,10 +243,12 @@ def log_ab():
 
 @app.route('/vote', methods=['POST'])
 def vote():
-    item = db.session.get(Poll, request.json.get('option'))
+    option_id = request.json.get('option')
+    item = db.session.get(Poll, option_id)
     if item:
         item.count += 1
         db.session.commit()
+    
     total = db.session.query(db.func.sum(Poll.count)).scalar() or 1
     results = [{"id": p.id, "percent": round((p.count / total) * 100), "count": p.count} for p in Poll.query.all()]
     return jsonify(results)
@@ -228,19 +257,40 @@ def vote():
 @login_required
 def stats():
     if current_user.email != 'admin@clausemate.app': return "Access Denied", 403
-    return "Stats Page (Use DB Viewer for details)"
+    
+    views_a = Analytics.query.filter_by(variant='A', event_type='view').count()
+    clicks_a = Analytics.query.filter_by(variant='A', event_type='click').count()
+    views_b = Analytics.query.filter_by(variant='B', event_type='view').count()
+    clicks_b = Analytics.query.filter_by(variant='B', event_type='click').count()
+    
+    conv_a = round((clicks_a / views_a * 100), 2) if views_a > 0 else 0
+    conv_b = round((clicks_b / views_b * 100), 2) if views_b > 0 else 0
+    
+    return f"<h1>A (Fear): {conv_a}% | B (Speed): {conv_b}%</h1>"
 
-# --- SEED SCRIPT ---
+# --- IMMORTAL ADMIN & SEED SCRIPT ---
 with app.app_context():
     db.create_all()
-    # Immortal Admin
-    if not User.query.filter_by(email='admin@clausemate.app').first():
-        admin_user = User(email='admin@clausemate.app', name='Admin', password=generate_password_hash('1234', method='scrypt'))
+    
+    # 1. Create/Restore Admin
+    target_email = 'admin@clausemate.app'
+    if not User.query.filter_by(email=target_email).first():
+        admin_user = User(
+            email=target_email,
+            name='Admin',
+            password=generate_password_hash('1234', method='scrypt')
+        )
         db.session.add(admin_user)
-    # Polls
-    for pid, label in [('toxic', '☠️ 독소조항'), ('terms', '🤯 어려운 용어'), ('money', '💸 돈 떼일까 봐')]:
-        if not db.session.get(Poll, pid): db.session.add(Poll(id=pid, label=label, count=10))
+        print(f"✅ Admin Restored: {target_email}")
+    
+    # 2. Create Polls
+    poll_data = [('toxic', '☠️ 독소조항'), ('terms', '🤯 어려운 용어'), ('money', '💸 돈 떼일까 봐')]
+    for pid, label in poll_data:
+        if not db.session.get(Poll, pid): 
+            db.session.add(Poll(id=pid, label=label, count=10))
+            
     db.session.commit()
+    print("✅ Database Ready")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5005)

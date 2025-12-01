@@ -37,8 +37,6 @@
 
         /* NAVBAR */
         nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; max-width: 1100px; margin: 0 auto; }
-        
-        /* BRANDING (Unified Icon) */
         .brand-lockup { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 24px; color: black; letter-spacing: -0.5px; }
         .brand-icon { font-size: 32px; color: var(--primary); } 
         
@@ -74,7 +72,6 @@
             text-align: center;
         }
         .poll-question { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--accent); }
-        
         .poll-option {
             background: #F8FAFC; border: 1px solid #E2E8F0;
             padding: 15px; border-radius: 12px; margin-bottom: 10px;
@@ -82,7 +79,6 @@
             text-align: left; font-weight: 600; color: #334155;
         }
         .poll-option:hover { border-color: var(--primary); background: #EFF6FF; }
-        
         .poll-bar {
             position: absolute; top: 0; left: 0; bottom: 0;
             background: rgba(37, 99, 235, 0.1); width: 0%;
@@ -98,9 +94,27 @@
         .feature-title { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
         .feature-desc { font-size: 15px; color: #64748B; line-height: 1.6; }
 
+        /* SPONSOR CARD (New Addition) */
+        .sponsor-container { max-width: 600px; margin: 80px auto 0; padding: 0 20px; }
+        .sponsor-card { 
+            padding: 25px; 
+            background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); 
+            border-radius: 20px; color: white; text-decoration: none; display: block; 
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15); transition: transform 0.2s; position: relative; 
+        }
+        .sponsor-card:hover { transform: translateY(-3px); }
+        .sponsor-header { display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; }
+        .sponsor-label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: #94A3B8; letter-spacing: 1px; }
+        .sponsor-badge { background: #3B82F6; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+        .sponsor-title { font-size: 20px; font-weight: 800; margin-bottom: 8px; display:flex; align-items:center; gap:8px;}
+        .sponsor-text { font-size: 14px; color: #CBD5E1; line-height: 1.5; }
+        .sponsor-arrow { position: absolute; bottom: 25px; right: 25px; font-size: 20px; color: #3B82F6; }
+
         footer { text-align: center; margin-top: 80px; padding: 40px; color: #94A3B8; font-size: 14px; border-top: 1px solid #E2E8F0; }
     </style>
-    </head>
+    
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7458405864836043" crossorigin="anonymous"></script>
+</head>
 <body>
 
     <nav>
@@ -171,6 +185,23 @@
         </div>
     </div>
 
+    <div class="sponsor-container">
+        <a href="https://nordvpn.com/" target="_blank" class="sponsor-card">
+            <div class="sponsor-header">
+                <div class="sponsor-label"><span>⚡ Powered By</span></div>
+                <div class="sponsor-badge">Exclusive Deal</div>
+            </div>
+            <div class="sponsor-title">
+                <span class="material-symbols-rounded">shield</span> NordVPN
+            </div>
+            <div class="sponsor-text">
+                중요한 계약서를 다룰 땐 보안이 필수입니다.<br>
+                ClauseMate가 추천하는 안전한 VPN을 60% 할인받으세요.
+            </div>
+            <div class="sponsor-arrow">&rarr;</div>
+        </a>
+    </div>
+
     <footer>
         <div style="margin-bottom: 10px;">
             <a href="/about" style="color: #64748B; text-decoration: none; margin: 0 10px;">서비스 소개</a>
@@ -197,23 +228,16 @@
         const subEl = document.getElementById('hero-sub');
 
         function rotateText() {
-            // Fade Out
             titleEl.style.opacity = 0;
             subEl.style.opacity = 0;
-
             setTimeout(() => {
-                // Swap Text
                 currentIdx = (currentIdx + 1) % variants.length;
                 titleEl.innerHTML = variants[currentIdx].headline;
                 subEl.innerHTML = variants[currentIdx].sub;
-                
-                // Fade In
                 titleEl.style.opacity = 1;
                 subEl.style.opacity = 1;
-            }, 500); // Wait 0.5s for fade out
+            }, 500);
         }
-
-        // Start Loop
         setInterval(rotateText, 5000);
 
         // --- POLL SCRIPT ---
@@ -225,8 +249,6 @@
                     body: JSON.stringify({option: option})
                 });
                 const results = await response.json();
-                
-                // Update Bars
                 results.forEach(r => {
                     const bar = document.getElementById('bar-' + r.id);
                     const pct = document.getElementById('pct-' + r.id);
@@ -236,8 +258,6 @@
                         pct.style.display = "inline";
                     }
                 });
-                
-                // Disable clicks
                 document.querySelectorAll('.poll-option').forEach(el => {
                     el.style.cursor = 'default';
                     el.onclick = null;
