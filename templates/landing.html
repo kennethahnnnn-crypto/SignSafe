@@ -12,30 +12,49 @@
             --bg-gradient: linear-gradient(-45deg, #f8fafc, #f1f5f9, #f8fafc);
             --primary: #2563EB;
             --accent: #0F172A;
-            --text-main: #000000;
+            --glass: rgba(255, 255, 255, 0.8);
+            --border: 1px solid rgba(255, 255, 255, 0.9);
+            --shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
         }
 
         body {
             font-family: "Pretendard", sans-serif;
             background: var(--bg-gradient);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
             margin: 0;
-            color: var(--text-main);
+            color: #334155;
+            overflow-x: hidden;
         }
 
-        /* BRANDING (Unified) */
-        .brand-lockup { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 24px; color: black; letter-spacing: -0.5px; }
-        .brand-icon { font-size: 32px; color: var(--primary); } 
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
         /* NAVBAR */
         nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; max-width: 1100px; margin: 0 auto; }
+        
+        /* BRANDING (Unified Icon) */
+        .brand-lockup { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 24px; color: black; letter-spacing: -0.5px; }
+        .brand-icon { font-size: 32px; color: var(--primary); } 
+        
         .nav-links a { text-decoration: none; color: #64748B; font-weight: 600; margin-left: 20px; transition: 0.2s; }
         .nav-links a:hover { color: black; }
         .nav-btn { background: black; color: white !important; padding: 10px 20px; border-radius: 50px; font-size: 14px; }
 
         /* HERO */
-        .hero { text-align: center; padding: 80px 20px; max-width: 800px; margin: 0 auto; }
-        .hero h1 { font-size: 52px; line-height: 1.15; margin-bottom: 20px; color: black; letter-spacing: -1.5px; }
-        .hero p { font-size: 20px; color: #475569; margin-bottom: 40px; line-height: 1.6; }
+        .hero { text-align: center; padding: 80px 20px 40px; max-width: 800px; margin: 0 auto; min-height: 220px; }
+        
+        .hero h1 { 
+            font-size: 52px; line-height: 1.2; margin-bottom: 20px; color: black; letter-spacing: -1.5px; 
+            transition: opacity 0.5s ease-in-out; opacity: 1;
+        }
+        .hero p { 
+            font-size: 20px; color: #475569; margin-bottom: 40px; line-height: 1.6; 
+            transition: opacity 0.5s ease-in-out; opacity: 1;
+        }
         
         .cta-btn {
             display: inline-flex; align-items: center; gap: 8px;
@@ -45,16 +64,41 @@
         }
         .cta-btn:hover { transform: translateY(-3px); }
 
+        /* POLL SECTION */
+        .poll-container {
+            max-width: 500px; margin: 0 auto 80px; background: white;
+            padding: 30px; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid #E2E8F0;
+            text-align: center;
+        }
+        .poll-question { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--accent); }
+        
+        .poll-option {
+            background: #F8FAFC; border: 1px solid #E2E8F0;
+            padding: 15px; border-radius: 12px; margin-bottom: 10px;
+            cursor: pointer; transition: 0.2s; position: relative; overflow: hidden;
+            text-align: left; font-weight: 600; color: #334155;
+        }
+        .poll-option:hover { border-color: var(--primary); background: #EFF6FF; }
+        
+        .poll-bar {
+            position: absolute; top: 0; left: 0; bottom: 0;
+            background: rgba(37, 99, 235, 0.1); width: 0%;
+            transition: width 1s ease; z-index: 0;
+        }
+        .poll-text { position: relative; z-index: 1; display: flex; justify-content: space-between; }
+        .poll-percent { font-weight: 800; color: var(--primary); display: none; }
+
         /* FEATURES */
-        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; max-width: 1100px; margin: 80px auto; padding: 0 20px; }
-        .feature-card { background: white; padding: 30px; border-radius: 20px; border: 1px solid #E2E8F0; text-align: left; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+        .feature-card { background: white; padding: 30px; border-radius: 20px; border: 1px solid #E2E8F0; }
         .icon-box { width: 50px; height: 50px; background: #EFF6FF; color: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
         .feature-title { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
         .feature-desc { font-size: 15px; color: #64748B; line-height: 1.6; }
 
         footer { text-align: center; margin-top: 80px; padding: 40px; color: #94A3B8; font-size: 14px; border-top: 1px solid #E2E8F0; }
     </style>
-</head>
+    </head>
 <body>
 
     <nav>
@@ -69,12 +113,42 @@
     </nav>
 
     <div class="hero">
-        <h1>계약서, 찍기만 하세요.<br>독소조항을 찾아드립니다.</h1>
-        <p>전세 계약, 근로 계약, 프리랜서 계약... 불안하셨나요?<br>AI 변호사가 3초 만에 위험한 조항을 분석합니다.</p>
-        <a href="/register" class="cta-btn">
+        <h1 id="hero-title">계약서, 도장 찍기 전에<br><span style='color:#EF4444'>독소조항</span> 확인하셨나요?</h1>
+        <p id="hero-sub">전세 사기, 불공정 계약... 나중에 후회하지 마세요.<br>AI 변호사가 3초 만에 위험한 함정을 찾아냅니다.</p>
+        
+        <a href="/register" class="cta-btn" id="hero-cta">
             <span class="material-symbols-rounded">rocket_launch</span>
             무료로 법률 검토 시작
         </a>
+    </div>
+
+    <div class="poll-container">
+        <div class="poll-question">Q. 계약서 쓸 때 가장 걱정되는 점은?</div>
+        
+        <div class="poll-option" onclick="submitVote('toxic')">
+            <div class="poll-bar" id="bar-toxic"></div>
+            <div class="poll-text">
+                <span>☠️ 독소조항 (불공정 계약)</span>
+                <span class="poll-percent" id="pct-toxic">0%</span>
+            </div>
+        </div>
+
+        <div class="poll-option" onclick="submitVote('terms')">
+            <div class="poll-bar" id="bar-terms"></div>
+            <div class="poll-text">
+                <span>🤯 어려운 법률 용어</span>
+                <span class="poll-percent" id="pct-terms">0%</span>
+            </div>
+        </div>
+
+        <div class="poll-option" onclick="submitVote('money')">
+            <div class="poll-bar" id="bar-money"></div>
+            <div class="poll-text">
+                <span>💸 돈 떼일까 봐 (보증금/미지급)</span>
+                <span class="poll-percent" id="pct-money">0%</span>
+            </div>
+        </div>
+        <div style="font-size:12px; color:#94A3B8; margin-top:15px;">* 익명으로 투표되며 결과가 바로 공개됩니다.</div>
     </div>
 
     <div class="features">
@@ -100,9 +174,75 @@
             <a href="/about" style="color: #64748B; text-decoration: none; margin: 0 10px;">서비스 소개</a>
             <a href="/privacy" style="color: #64748B; text-decoration: none; margin: 0 10px;">개인정보 처리방침</a>
         </div>
-        © 2025 ClauseMate. All rights reserved.<br>
-        본 서비스는 법적 효력이 없으며 참고용으로만 사용해야 합니다.
+        © 2025 ClauseMate. All rights reserved.
     </footer>
+
+    <script>
+        // --- TEXT LOOP SCRIPT ---
+        const variants = [
+            {
+                headline: "계약서, 도장 찍기 전에<br><span style='color:#EF4444'>독소조항</span> 확인하셨나요?",
+                sub: "전세 사기, 불공정 계약... 나중에 후회하지 마세요.<br>AI 변호사가 3초 만에 위험한 함정을 찾아냅니다."
+            },
+            {
+                headline: "복잡한 법률 용어,<br><span style='color:#2563EB'>3초 만에</span> 해석해 드립니다.",
+                sub: "변호사 찾을 시간도 비용도 없다면?<br>AI가 계약서의 핵심 내용과 수정안을 즉시 알려줍니다."
+            }
+        ];
+
+        let currentIdx = 0;
+        const titleEl = document.getElementById('hero-title');
+        const subEl = document.getElementById('hero-sub');
+
+        function rotateText() {
+            // Fade Out
+            titleEl.style.opacity = 0;
+            subEl.style.opacity = 0;
+
+            setTimeout(() => {
+                // Swap Text
+                currentIdx = (currentIdx + 1) % variants.length;
+                titleEl.innerHTML = variants[currentIdx].headline;
+                subEl.innerHTML = variants[currentIdx].sub;
+                
+                // Fade In
+                titleEl.style.opacity = 1;
+                subEl.style.opacity = 1;
+            }, 500); // Wait 0.5s for fade out
+        }
+
+        // Start Loop
+        setInterval(rotateText, 5000);
+
+        // --- POLL SCRIPT ---
+        async function submitVote(option) {
+            try {
+                const response = await fetch('/vote', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({option: option})
+                });
+                const results = await response.json();
+                
+                // Update Bars
+                results.forEach(r => {
+                    const bar = document.getElementById('bar-' + r.id);
+                    const pct = document.getElementById('pct-' + r.id);
+                    if (bar && pct) {
+                        bar.style.width = r.percent + "%";
+                        pct.innerText = r.percent + "%";
+                        pct.style.display = "inline";
+                    }
+                });
+                
+                // Disable clicks
+                document.querySelectorAll('.poll-option').forEach(el => {
+                    el.style.cursor = 'default';
+                    el.onclick = null;
+                });
+            } catch(e) { console.error(e); }
+        }
+    </script>
 
 </body>
 </html>
