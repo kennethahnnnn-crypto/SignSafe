@@ -51,11 +51,22 @@ def load_user(user_id):
 # --- ROUTES ---
 
 # 1. Landing Page (The Front Door)
+# 1. Landing Page
 @app.route('/')
 def home():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     return render_template('landing.html')
+
+# --- NEW PAGES FOR ADSENSE ---
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+# -----------------------------
 
 # 2. Login
 @app.route('/login', methods=['GET', 'POST'])
