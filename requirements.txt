@@ -1,0 +1,9 @@
+flask
+gunicorn
+google-generativeai
+Pillow
+pypdf
+python-docx
+flask-login
+flask-sqlalchemy
+werkzeug
