@@ -15,14 +15,14 @@ app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 
 app.config['SECRET_KEY'] = 'ClauseMateSecretKey'
 
-# --- DATABASE SETUP ---
+# --- DATABASE ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///clausemate.db' 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- AI SETUP ---
+# --- AI ---
 API_KEY = os.environ.get("GEMINI_API_KEY", "PASTE_YOUR_KEY_HERE_IF_LOCAL")
 if API_KEY:
     genai.configure(api_key=API_KEY)
@@ -60,7 +60,6 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 # --- ROUTES ---
-
 @app.route('/')
 def home():
     if current_user.is_authenticated:
@@ -68,12 +67,10 @@ def home():
     return render_template('landing.html')
 
 @app.route('/about')
-def about():
-    return render_template('about.html')
+def about(): return render_template('about.html')
 
 @app.route('/privacy')
-def privacy():
-    return render_template('privacy.html')
+def privacy(): return render_template('privacy.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -84,7 +81,7 @@ def login():
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('dashboard'))
-        flash('로그인 실패: 이메일이나 비밀번호를 확인하세요.')
+        flash('로그인 실패')
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -121,7 +118,7 @@ def review():
     prompt_content = []
     
     if 'text' in request.form and request.form['text'].strip():
-        prompt_content.append(f"CONTRACT TEXT PART:\n{request.form['text']}\n")
+        prompt_content.append(f"CONTRACT TEXT:\n{request.form['text']}\n")
 
     if 'files' in request.files:
         files = request.files.getlist('files')
@@ -143,18 +140,18 @@ def review():
                     prompt_content.append(f"\n[DOCX CONTENT]:\n{text}")
             except: pass
 
-    if not prompt_content:
-        return jsonify({"error": "분석할 내용이 없습니다."}), 400
+    if not prompt_content: return jsonify({"error": "분석할 내용이 없습니다."}), 400
 
-    # --- UPDATED PROMPT WITH LOCATION ---
+    # --- UPDATED PROMPT FOR LOCATION TRACKING ---
     base_prompt = """
     You are a highly experienced Korean Contract Lawyer (변호사). 
     Review the provided contract materials (Images, PDFs, Text) as ONE complete document.
     
     CRITICAL INSTRUCTIONS:
-    1. **EXHAUSTIVE SEARCH:** Find EVERY SINGLE clause that poses a risk.
-    2. **LOCATION TRACKING:** You MUST identify WHERE the clause is (e.g., "제5조 2항", "Article 10", "특약사항"). If unsure, write "위치 미상".
+    1. **EXHAUSTIVE SEARCH:** Find EVERY SINGLE clause that poses a risk. Do not limit the count.
+    2. **LOCATION IS MANDATORY:** You MUST state the Article Number (e.g. "제5조 2항") or Page Number. If the text is raw and has no numbers, quote the start of the sentence.
     3. **LANGUAGE:** All output MUST be in natural KOREAN (한국어).
+    4. **FORMAT:** Return ONLY ONE valid JSON object.
     
     OUTPUT JSON (No Markdown):
     {
@@ -163,18 +160,18 @@ def review():
         "score_comment": "One sentence summary of risk.",
         "analysis": [
             {
-                "location": "제5조 (해지) or Page 2", 
+                "location": "제3조 (보증금) OR [Page 1]", 
                 "type": "위험", 
                 "original": "Original text",
                 "reason": "Why is this dangerous? (Korean)",
                 "fix": "Fair rewrite (Korean)"
             },
             {
-                "location": "특약사항 3번",
+                "location": "특약사항 2번",
                 "type": "주의",
                 "original": "Original text",
-                "reason": "Why check this? (Korean)",
-                "fix": "Fair rewrite (Korean)"
+                "reason": "Reason (Korean)",
+                "fix": "Rewrite (Korean)"
             }
         ]
     }
@@ -184,6 +181,8 @@ def review():
     try:
         response = model.generate_content(prompt_content)
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
+        
+        # Fix "Extra Data" Bug (Find first { and last })
         start = clean_json.find('{')
         end = clean_json.rfind('}') + 1
         final_json_str = clean_json[start:end]
@@ -204,45 +203,44 @@ def review():
         
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"분석 오류: {str(e)}"}), 500
 
-# --- ROUTES & SEED ---
+# --- MARKETING ROUTES ---
 @app.route('/log_ab', methods=['POST'])
 def log_ab():
-    # (Same as before)
+    data = request.json
+    log = Analytics(variant=data.get('variant'), event_type=data.get('event'))
+    db.session.add(log)
+    db.session.commit()
     return jsonify({"status": "logged"})
 
 @app.route('/vote', methods=['POST'])
 def vote():
-    # (Same as before)
-    option_id = request.json.get('option')
-    item = db.session.get(Poll, option_id)
+    item = db.session.get(Poll, request.json.get('option'))
     if item:
         item.count += 1
         db.session.commit()
     total = db.session.query(db.func.sum(Poll.count)).scalar() or 1
-    all_options = Poll.query.all()
-    results = [{"id": p.id, "percent": round((p.count / total) * 100), "count": p.count} for p in all_options]
+    results = [{"id": p.id, "percent": round((p.count / total) * 100), "count": p.count} for p in Poll.query.all()]
     return jsonify(results)
 
 @app.route('/stats')
 @login_required
 def stats():
     if current_user.email != 'admin@clausemate.app': return "Access Denied", 403
-    # (Stats logic same as before)
-    return "Stats Page"
+    return "Stats Page (Use DB Viewer for details)"
 
-# Seed Script
+# --- SEED SCRIPT ---
 with app.app_context():
     db.create_all()
+    # Immortal Admin
     if not User.query.filter_by(email='admin@clausemate.app').first():
         admin_user = User(email='admin@clausemate.app', name='Admin', password=generate_password_hash('1234', method='scrypt'))
         db.session.add(admin_user)
-    poll_data = [('toxic', '☠️ 독소조항'), ('terms', '🤯 어려운 용어'), ('money', '💸 돈 떼일까 봐')]
-    for pid, label in poll_data:
+    # Polls
+    for pid, label in [('toxic', '☠️ 독소조항'), ('terms', '🤯 어려운 용어'), ('money', '💸 돈 떼일까 봐')]:
         if not db.session.get(Poll, pid): db.session.add(Poll(id=pid, label=label, count=10))
     db.session.commit()
-    print("✅ Database Ready")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5005)
