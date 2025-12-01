@@ -13,7 +13,7 @@ from docx import Document
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False 
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 
-app.config['SECRET_KEY'] = 'ClauseMateSecretKey'
+app.config['SECRET_KEY'] = 'ClauseMateSecretKey' # Change for production
 
 # --- DATABASE SETUP ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///clausemate.db' 
@@ -23,7 +23,6 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # --- AI SETUP ---
-# Get key from Render Environment Variable (or paste for local test)
 API_KEY = os.environ.get("GEMINI_API_KEY", "PASTE_YOUR_KEY_HERE_IF_LOCAL")
 if API_KEY:
     genai.configure(api_key=API_KEY)
@@ -58,7 +57,6 @@ class Poll(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    # UPDATED: Modern SQLAlchemy Syntax
     return db.session.get(User, int(user_id))
 
 # --- ROUTES ---
@@ -159,6 +157,7 @@ def review():
     1. **EXHAUSTIVE SEARCH:** Find EVERY SINGLE clause that poses a risk. Do not limit the count.
     2. **STRICT AUDIT:** Be extremely critical.
     3. **LANGUAGE:** All output MUST be in natural KOREAN (한국어).
+    4. **FORMAT:** Return ONLY ONE valid JSON object. Do not add extra text or multiple JSONs.
     
     OUTPUT JSON (No Markdown):
     {
@@ -185,7 +184,12 @@ def review():
     
     try:
         response = model.generate_content(prompt_content)
+        # Clean Markdown
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
+        
+        # --- FIX FOR EXTRA DATA ---
+        # Find the FIRST opening brace and the LAST closing brace
+        # This ignores any extra garbage the AI might have printed after the JSON
         start = clean_json.find('{')
         end = clean_json.rfind('}') + 1
         final_json_str = clean_json[start:end]
@@ -206,8 +210,10 @@ def review():
         
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        # Return the error message to the user instead of 500
+        return jsonify({"error": f"분석 중 오류가 발생했습니다: {str(e)}"}), 500
 
+# --- MARKETING ROUTES ---
 @app.route('/log_ab', methods=['POST'])
 def log_ab():
     data = request.json
@@ -223,10 +229,7 @@ def log_ab():
 @app.route('/vote', methods=['POST'])
 def vote():
     option_id = request.json.get('option')
-    
-    # UPDATED: Modern Syntax to avoid Warning
     item = db.session.get(Poll, option_id)
-    
     if item:
         item.count += 1
         db.session.commit()
@@ -239,7 +242,7 @@ def vote():
 @app.route('/stats')
 @login_required
 def stats():
-    if current_user.email != 'admin@clausemate.com': return "Access Denied", 403
+    if current_user.email != 'admin@clausemate.app': return "Access Denied", 403
     views_a = Analytics.query.filter_by(variant='A', event_type='view').count()
     clicks_a = Analytics.query.filter_by(variant='A', event_type='click').count()
     views_b = Analytics.query.filter_by(variant='B', event_type='view').count()
@@ -248,22 +251,29 @@ def stats():
     conv_b = round((clicks_b / views_b * 100), 2) if views_b > 0 else 0
     return f"<h1>A: {conv_a}% ({clicks_a}/{views_a}) | B: {conv_b}% ({clicks_b}/{views_b})</h1>"
 
-# --- SEED SCRIPT (Updated) ---
+# --- IMMORTAL ADMIN & SEED SCRIPT ---
 with app.app_context():
     db.create_all()
     
-    if not User.query.filter_by(email='admin@clausemate.com').first():
-        admin_user = User(email='admin@clausemate.com', name='Admin User', password=generate_password_hash('1234', method='scrypt'))
+    # 1. Create/Restore Admin
+    target_email = 'admin@clausemate.app'
+    if not User.query.filter_by(email=target_email).first():
+        admin_user = User(
+            email=target_email,
+            name='Admin',
+            password=generate_password_hash('1234', method='scrypt')
+        )
         db.session.add(admin_user)
+        print(f"✅ Admin Restored: {target_email}")
     
+    # 2. Create Polls
     poll_data = [('toxic', '☠️ 독소조항'), ('terms', '🤯 어려운 용어'), ('money', '💸 돈 떼일까 봐')]
     for pid, label in poll_data:
-        # UPDATED: Modern Syntax
         if not db.session.get(Poll, pid): 
             db.session.add(Poll(id=pid, label=label, count=10))
             
     db.session.commit()
-    print("✅ Database Seeded & Ready")
+    print("✅ Database Ready")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5005)
