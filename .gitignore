@@ -3,3 +3,4 @@ __pycache__/
 instance/
 clausemate.db
 .DS_Store
+.env
