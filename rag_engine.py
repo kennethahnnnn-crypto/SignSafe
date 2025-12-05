@@ -1,72 +1,63 @@
-# --- [Render 배포를 위한 SQLite 패치] ---
-# 로컬 개발환경이나 배포 환경에 따라 pysqlite3가 필요할 수 있음
-try:
-    __import__('pysqlite3')
-    import sys
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-# ----------------------------------------
-
 import os
-from dotenv import load_dotenv
-# ... (이하 기존 코드) ...
-load_dotenv()                   # <--- Add this (It loads the .env file immediately)
-
-import chromadb
 import google.generativeai as genai
-from chromadb.utils import embedding_functions
+from pinecone import Pinecone
+from dotenv import load_dotenv
 
-# 1. Configure Gemini
-# Ensure you have your API Key set in your environment or replace 'os.environ...' with the actual key for testing
-genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
+# .env 파일 로드
+load_dotenv()
 
-# 2. Initialize ChromaDB
-# This creates a folder named 'chroma_db' in your project folder
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
+# 1. API 키 설정
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 
-# 3. Custom Embedding Function (Connects Chroma to Gemini)
-class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        model = "models/text-embedding-004"
-        return [
-            genai.embed_content(
-                model=model,
-                content=text,
-                task_type="retrieval_document",
-                title="Korean Case Law"
-            )["embedding"]
-            for text in input
-        ]
+# 키가 없는 경우 에러 방지 (로그만 출력)
+if not GOOGLE_API_KEY or not PINECONE_API_KEY:
+    print("⚠️ 경고: API 키가 설정되지 않았습니다. .env 파일을 확인하세요.")
 
-# 4. Create or Connect to the Collection
-collection = chroma_client.get_or_create_collection(
-    name="korean_legal_cases",
-    embedding_function=GeminiEmbeddingFunction()
-)
+# 2. 초기화
+genai.configure(api_key=GOOGLE_API_KEY)
 
-def add_case_to_db(case_id, text, metadata):
-    """Call this to save a law/case."""
-    collection.add(
-        ids=[case_id],
-        documents=[text],
-        metadatas=[metadata]
-    )
+# Pinecone 연결 (새로운 패키지 문법 적용)
+try:
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index_name = "legal-cases"  # 아까 만든 인덱스 이름과 일치해야 함
+    index = pc.Index(index_name)
+except Exception as e:
+    print(f"❌ Pinecone 연결 실패: {e}")
 
 def search_precedents(query_text, n_results=3):
-    """Finds the top 3 relevant laws."""
-    results = collection.query(
-        query_texts=[query_text],
-        n_results=n_results
-    )
-    
-    # Organize the messy result into a clean list
-    retrieved_data = []
-    if results['documents']:
-        for i in range(len(results['documents'][0])):
-            retrieved_data.append({
-                "text": results['documents'][0][i],
-                "meta": results['metadatas'][0][i]
+    """
+    사용자의 질문(query_text)을 받아 Pinecone에서 유사한 판례를 검색합니다.
+    """
+    try:
+        # 1. 질문을 벡터(숫자)로 변환
+        # (문서를 넣을 때와 똑같은 모델을 써야 찾을 수 있습니다)
+        query_vector = genai.embed_content(
+            model="models/text-embedding-004",
+            content=query_text,
+            task_type="retrieval_query"
+        )['embedding']
+        
+        # 2. Pinecone 검색
+        search_response = index.query(
+            vector=query_vector,
+            top_k=n_results,
+            include_metadata=True # 텍스트 내용도 같이 가져옴
+        )
+        
+        # 3. 결과 정리 (앱에서 쓰기 편한 형태로 변환)
+        results = []
+        for match in search_response['matches']:
+            # metadata가 없을 경우를 대비해 get 사용
+            meta = match.get('metadata', {})
+            results.append({
+                "text": meta.get('text', '내용 없음'),
+                "meta": {"source": meta.get('source', 'Unknown')}
             })
             
-    return retrieved_data
+        return results
+        
+    except Exception as e:
+        print(f"❌ 검색 에러: {str(e)}")
+        # 에러 발생 시 빈 리스트 반환 (서버 멈춤 방지)
+        return []
