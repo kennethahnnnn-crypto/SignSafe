@@ -1,0 +1,40 @@
+name: Weekly Legal Study
+
+# 언제 실행할까요?
+on:
+  schedule:
+    # 매주 월요일 아침 9시 (한국 시간 KST 기준)
+    # Cron 식은 UTC 기준이므로 0시(자정)에 돌리면 한국 9시입니다.
+    - cron: '0 0 * * 1'
+  
+  # 수동으로 실행 버튼을 누를 수도 있게 함 (테스트용)
+  workflow_dispatch:
+
+jobs:
+  study-cases:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 코드 가져오기
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # 2. 파이썬 설치
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    # 3. 라이브러리 설치
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 4. 스크립트 실행 (환경변수 주입)
+    - name: Run study script
+      env:
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        LAW_USER_ID: ${{ secrets.LAW_USER_ID }}
+      run: python scripts/study_new_cases.py
