@@ -61,3 +61,56 @@ def search_precedents(query_text, n_results=3):
         print(f"❌ 검색 에러: {str(e)}")
         # 에러 발생 시 빈 리스트 반환 (서버 멈춤 방지)
         return []
+    
+    # --- [추가 기능] 챗봇용 대화 함수 ---
+# rag_engine.py 의 ask_lawyer 함수 전체 수정
+
+def ask_lawyer(query_text, context_text=""):
+    """
+    사용자의 질문(query_text)과 현재 계약서 내용(context_text)을 바탕으로 답변을 생성합니다.
+    """
+    try:
+        # 1. 질문과 관련된 판례 검색 (RAG)
+        relevant_cases = search_precedents(query_text, n_results=3)
+        
+        # 2. 참고 자료 정리
+        case_summary = ""
+        if relevant_cases:
+            case_summary = "\n<관련_판례_데이터베이스>\n"
+            for idx, case in enumerate(relevant_cases, 1):
+                case_summary += f"{idx}. {case['text']} (출처: {case['meta']['source']})\n"
+            case_summary += "</관련_판례_데이터베이스>\n"
+        else:
+            case_summary = "\n<관련_판례_없음>\n일반적인 대한민국 법률 원칙 적용\n"
+
+        # 3. 프롬프트 구성 (말투 교정 적용)
+        prompt = f"""
+        당신은 사용자의 법률 문제를 돕는 AI 파트너 'ClauseMate'입니다.
+        아래 정보를 바탕으로 사용자의 질문에 답변하세요.
+
+        ---
+        [현재 검토 중인 계약서 조항 또는 맥락]
+        {context_text}
+        ---
+        {case_summary}
+        ---
+
+        사용자 질문: "{query_text}"
+
+        [답변 스타일 가이드라인 - 엄격 준수]
+        1. **직접적인 답변:** "안녕하세요", "변호사로서 답변드립니다" 같은 **상투적인 인사말이나 자기소개를 절대 하지 마세요.** 바로 본론부터 답변하세요.
+        2. **근거 기반:** <관련_판례_데이터베이스>의 내용을 논리적 근거로 사용하되, 법률 용어는 이해하기 쉽게 풀어서 설명하세요.
+        3. **자연스러운 인용:** 판례를 언급할 땐 "관련 판례(2023도...)에 따르면"과 같이 자연스럽게 문장에 녹여내세요.
+        4. **구조화:** 답변이 길어질 경우 가독성을 위해 불릿 포인트나 번호를 사용하세요.
+        5. **톤앤매너:** 정중하지만 딱딱하지 않게, 전문적이지만 친절하게 한국어로 답변하세요.
+        """
+
+        # 4. Gemini에게 질문
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        
+        return response.text
+
+    except Exception as e:
+        print(f"❌ 챗봇 에러: {e}")
+        return "죄송합니다. 답변을 생성하는 도중 오류가 발생했습니다."

@@ -341,6 +341,13 @@
         const formData = new FormData();
         const text = document.getElementById('contractInput').value;
         
+        // --- [추가된 부분] 챗봇에게 계약서 내용 공유 ---
+        if (text) {
+             currentContractContext = text; 
+        }
+        // ------------------------------------------
+
+        // [기존 코드]
         if (currentMode === 'text') {
             if(!text) return alert("내용을 입력해주세요!");
             formData.append('text', text);
@@ -348,6 +355,8 @@
             if(selectedFiles.length === 0) return alert("파일을 업로드해주세요!");
             selectedFiles.forEach(file => formData.append('files', file));
         }
+        
+        // ... (이하 생략) ...
 
         document.getElementById('loader').style.display = 'block';
         document.getElementById('resultArea').style.display = 'none';
@@ -407,6 +416,210 @@
 
     function fillDemo() {
         document.getElementById('contractInput').value = `제5조 (계약의 해지)\n갑은 언제든지 별도의 통보 없이 본 계약을 해지할 수 있다.`;
+    }
+</script>
+<div id="chatbot-widget">
+    <button id="chat-launcher" onclick="toggleChat()">
+        💬 AI 변호사
+    </button>
+
+    <div id="chat-window" class="hidden">
+        <div class="chat-header">
+            <span>⚖️ ClauseMate AI</span>
+            <button onclick="toggleChat()" class="close-btn">✖</button>
+        </div>
+        <div id="chat-messages" class="chat-body">
+            <div class="message bot">
+                안녕하세요! 계약서와 관련하여 궁금한 점을 물어보세요.<br>
+                (예: "이 조항이 왜 위험해?", "판례가 있어?")
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="user-input" placeholder="질문을 입력하세요..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">전송</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* [스타일] 우측 하단 고정 */
+    #chatbot-widget {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+        font-family: 'Pretendard', sans-serif;
+    }
+
+    /* 런처 버튼 */
+    #chat-launcher {
+        background: #2563eb; /* ClauseMate 메인 컬러 */
+        color: white;
+        border: none;
+        border-radius: 50px;
+        padding: 15px 25px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transition: transform 0.2s;
+    }
+    #chat-launcher:hover { transform: scale(1.05); }
+
+    /* 채팅창 본체 */
+    #chat-window {
+        width: 350px;
+        height: 500px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        bottom: 70px; /* 버튼 위에 위치 */
+        right: 0;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    #chat-window.hidden {
+        display: none;
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    /* 헤더 */
+    .chat-header {
+        background: #1e40af;
+        color: white;
+        padding: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: bold;
+    }
+    .close-btn { background: none; border: none; color: white; cursor: pointer; font-size: 18px; }
+
+    /* 메시지 영역 */
+    .chat-body {
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+        background: #f8fafc;
+        font-size: 14px;
+    }
+    .message {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        max-width: 80%;
+        line-height: 1.4;
+    }
+    .message.bot { background: #e2e8f0; align-self: flex-start; color: #333; }
+    .message.user { background: #3b82f6; color: white; margin-left: auto; text-align: right; }
+
+    /* 입력 영역 */
+    .chat-input-area {
+        padding: 10px;
+        border-top: 1px solid #ddd;
+        display: flex;
+        background: white;
+    }
+    .chat-input-area input {
+        flex: 1;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        outline: none;
+    }
+    .chat-input-area button {
+        margin-left: 8px;
+        padding: 8px 15px;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .chat-input-area button:disabled { background: #ccc; }
+</style>
+
+<script>
+    // [로직] 챗봇 동작 스크립트
+    
+    // 현재 보고 있는 계약서 내용 (분석 결과를 클릭했을 때 이 변수에 담아야 함)
+    // 지금은 테스트를 위해 비워둡니다. 나중에 연동할 예정입니다.
+    let currentContractContext = ""; 
+
+    function toggleChat() {
+        const window = document.getElementById('chat-window');
+        window.classList.toggle('hidden');
+        if (!window.classList.contains('hidden')) {
+            document.getElementById('user-input').focus();
+        }
+    }
+
+    function handleKeyPress(e) {
+        if (e.key === 'Enter') sendMessage();
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('user-input');
+        const message = input.value.trim();
+        const chatBody = document.getElementById('chat-messages');
+
+        if (!message) return;
+
+        // 1. 내 메시지 표시
+        appendMessage('user', message);
+        input.value = '';
+
+        // 2. 로딩 표시 (임시)
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'message bot';
+        loadingDiv.innerText = '판례를 검색 중입니다... 🔍';
+        loadingDiv.id = 'loading-msg';
+        chatBody.appendChild(loadingDiv);
+        chatBody.scrollTop = chatBody.scrollHeight;
+
+        try {
+            // 3. API 호출 (우리가 만든 /api/chat)
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    message: message,
+                    context: currentContractContext // 현재 계약서 내용 전달
+                })
+            });
+            const data = await response.json();
+
+            // 4. 로딩 제거 및 답변 표시
+            document.getElementById('loading-msg').remove();
+            
+            if (data.answer) {
+                // 줄바꿈 처리 등을 위해 innerHTML 사용 가능 (보안 주의)
+                // 여기선 간단히 텍스트로 처리하되, 줄바꿈만 <br>로 변환
+                const formattedAnswer = data.answer.replace(/\n/g, '<br>');
+                appendMessage('bot', formattedAnswer, true);
+            } else {
+                appendMessage('bot', '죄송합니다. 오류가 발생했습니다.');
+            }
+
+        } catch (error) {
+            console.error(error);
+            document.getElementById('loading-msg').remove();
+            appendMessage('bot', '서버 연결에 실패했습니다.');
+        }
+    }
+
+    function appendMessage(sender, text, isHtml = false) {
+        const chatBody = document.getElementById('chat-messages');
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        if (isHtml) div.innerHTML = text;
+        else div.innerText = text;
+        chatBody.appendChild(div);
+        chatBody.scrollTop = chatBody.scrollHeight;
     }
 </script>
 </body>

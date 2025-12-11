@@ -12,8 +12,7 @@ from docx import Document
 from dotenv import load_dotenv
 
 # [RAG 통합 1] 검색 엔진 가져오기
-# (같은 폴더에 rag_engine.py와 chroma_db 폴더가 있어야 합니다)
-from rag_engine import search_precedents 
+from rag_engine import search_precedents, ask_lawyer
 
 load_dotenv() # .env 파일 로드
 
@@ -33,10 +32,9 @@ login_manager.login_view = 'login'
 API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    # [참고] 모델명은 최신 안정화 버전인 2.5-flash를 추천합니다.
     model = genai.GenerativeModel('gemini-2.5-flash') 
 
-# --- MODELS (기존과 동일) ---
+# --- MODELS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True)
@@ -67,7 +65,7 @@ class Poll(db.Model):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# --- ROUTES (기본 라우트 동일) ---
+# --- ROUTES ---
 
 @app.route('/')
 def home():
@@ -121,20 +119,18 @@ def dashboard():
     contracts = Contract.query.filter_by(user_id=current_user.id).order_by(Contract.created_at.desc()).all()
     return render_template('dashboard.html', name=current_user.name, contracts=contracts)
 
-# --- [RAG 통합 2] Review 기능 대폭 업그레이드 ---
+# --- [RAG 통합 2] Review 기능 (버그 수정 완료) ---
 @app.route('/review', methods=['POST'])
 @login_required
 def review():
     prompt_content = []
-    extracted_text_for_rag = ""  # RAG 검색용 텍스트 저장소
+    extracted_text_for_rag = "" 
     
-    # 1. 텍스트 입력 처리
     if 'text' in request.form and request.form['text'].strip():
         text_input = request.form['text']
         prompt_content.append(f"CONTRACT TEXT:\n{text_input}\n")
         extracted_text_for_rag += text_input + "\n"
 
-    # 2. 파일 입력 처리 (PDF/DOCX/Image)
     if 'files' in request.files:
         files = request.files.getlist('files')
         for file in files:
@@ -144,7 +140,6 @@ def review():
                 if filename.endswith(('.jpg', '.jpeg', '.png', '.webp', '.heic')):
                     img = Image.open(file)
                     prompt_content.append(img)
-                    # 이미지는 텍스트 추출이 어려우므로 RAG 검색에서는 제외 (OCR 필요 시 별도 추가)
                 elif filename.endswith('.pdf'):
                     reader = PdfReader(file)
                     pdf_text = ""
@@ -162,22 +157,16 @@ def review():
 
     if not prompt_content: return jsonify({"error": "분석할 내용이 없습니다."}), 400
 
-    # 3. [핵심] RAG: 판례 데이터베이스 검색
     print("🔍 Searching Precedents using RAG Engine...")
     
-    # 텍스트가 너무 길면 검색 정확도가 떨어지므로 앞부분 2000자만 사용해 검색 (키워드 추출 효과)
     query_text = extracted_text_for_rag[:2000] if extracted_text_for_rag else "계약서 일반 검토"
     relevant_cases = search_precedents(query_text, n_results=3)
     
-    # ---------------------------------------------------------
-    # 1. 검색된 판례를 프롬프트에 넣을 문자열로 변환 (수정됨)
-    # ---------------------------------------------------------
+    # [수정됨] 앵무새 버그 방지용 XML 태그 적용
     precedents_context = ""
     if relevant_cases:
-        # [변경] AI가 헷갈리지 않게 XML 스타일 태그로 감싸줍니다.
         precedents_context = "\n<참고용_판례_데이터베이스>\n"
         for idx, case in enumerate(relevant_cases, 1):
-            # Source도 한글 '출처'로 변경
             precedents_context += f"{idx}. {case['text']} (출처: {case['meta']['source']})\n"
         precedents_context += "</참고용_판례_데이터베이스>\n"
         print(f"   ✅ Found {len(relevant_cases)} precedents.")
@@ -185,9 +174,6 @@ def review():
         print("   ❌ No precedents found.")
         precedents_context = "\n<참고_판례_없음>\n일반적인 대한민국 법률 원칙에 따라 판단하세요.\n"
 
-    # ---------------------------------------------------------
-    # 2. 프롬프트 작성 (수정됨: 지시사항 강화 / 유지됨: JSON 구조)
-    # ---------------------------------------------------------
     base_prompt = f"""
     You are a highly experienced Korean Contract Lawyer (변호사). 
     Review the provided contract materials (Images, PDFs, Text) as ONE complete document.
@@ -246,41 +232,7 @@ def review():
         print(f"Error: {e}")
         return jsonify({"error": f"분석 오류: {str(e)}"}), 500
 
-# --- [RAG 통합 3] 챗봇 API 라우트 추가 ---
-@app.route('/chat_api', methods=['POST'])
-@login_required
-def chat_api():
-    """프론트엔드에서 JS로 호출할 챗봇 엔드포인트"""
-    try:
-        data = request.json
-        user_question = data.get('message')
-        if not user_question: return jsonify({"response": "질문을 입력해주세요."})
-
-        # 1. RAG 검색
-        relevant_cases = search_precedents(user_question)
-        
-        # 2. Context 구성
-        context = "\n".join([f"- {c['text']} (출처: {c['meta']['source']})" for c in relevant_cases])
-        
-        # 3. 답변 생성
-        chat_prompt = f"""
-        당신은 한국 법률 전문가 AI입니다. 아래 판례/법률 정보를 바탕으로 사용자의 질문에 답하세요.
-        
-        [참고 정보]
-        {context}
-        
-        [질문]
-        {user_question}
-        
-        답변 시 '참고 정보'에 있는 내용을 근거로 들고, 출처를 명시하세요.
-        """
-        response = model.generate_content(chat_prompt)
-        return jsonify({"response": response.text})
-        
-    except Exception as e:
-        return jsonify({"response": f"오류가 발생했습니다: {str(e)}"})
-
-# --- ADMIN PANEL & ETC (기존 유지) ---
+# --- ADMIN PANEL ---
 @app.route('/admin/users')
 @login_required
 def admin_users():
@@ -314,6 +266,24 @@ def vote():
 def stats():
     if current_user.email != 'admin@clausemate.app': return "Access Denied", 403
     return "<h1>Stats Placeholder</h1>"
+
+# --- [RAG 통합 3] 챗봇 API 라우트 (최종) ---
+# 기존의 불완전한 /chat_api 라우트는 삭제했습니다.
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    data = request.json
+    user_message = data.get('message', '')
+    current_context = data.get('context', '') # 사용자가 보고 있는 계약서 내용
+    
+    if not user_message:
+        return jsonify({"error": "질문 내용이 없습니다."}), 400
+
+    print(f"💬 챗봇 질문 수신: {user_message}")
+    
+    # rag_engine.py에 있는 뇌(ask_lawyer)를 사용합니다.
+    answer = ask_lawyer(user_message, current_context)
+    
+    return jsonify({"answer": answer})
 
 # --- DB INIT ---
 with app.app_context():
