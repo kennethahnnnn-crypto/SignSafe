@@ -169,18 +169,25 @@ def review():
     query_text = extracted_text_for_rag[:2000] if extracted_text_for_rag else "계약서 일반 검토"
     relevant_cases = search_precedents(query_text, n_results=3)
     
-    # 검색된 판례를 프롬프트에 넣을 문자열로 변환
+    # ---------------------------------------------------------
+    # 1. 검색된 판례를 프롬프트에 넣을 문자열로 변환 (수정됨)
+    # ---------------------------------------------------------
     precedents_context = ""
     if relevant_cases:
-        precedents_context = "\n[RELEVANT LEGAL PRECEDENTS FROM DATABASE]\n"
+        # [변경] AI가 헷갈리지 않게 XML 스타일 태그로 감싸줍니다.
+        precedents_context = "\n<참고용_판례_데이터베이스>\n"
         for idx, case in enumerate(relevant_cases, 1):
-            precedents_context += f"{idx}. {case['text']} (Source: {case['meta']['source']})\n"
+            # Source도 한글 '출처'로 변경
+            precedents_context += f"{idx}. {case['text']} (출처: {case['meta']['source']})\n"
+        precedents_context += "</참고용_판례_데이터베이스>\n"
         print(f"   ✅ Found {len(relevant_cases)} precedents.")
     else:
         print("   ❌ No precedents found.")
-        precedents_context = "\n[NO SPECIFIC PRECEDENTS FOUND - APPLY GENERAL KOREAN LAW]\n"
+        precedents_context = "\n<참고_판례_없음>\n일반적인 대한민국 법률 원칙에 따라 판단하세요.\n"
 
-    # 4. 프롬프트 작성 (판례 근거 추가)
+    # ---------------------------------------------------------
+    # 2. 프롬프트 작성 (수정됨: 지시사항 강화 / 유지됨: JSON 구조)
+    # ---------------------------------------------------------
     base_prompt = f"""
     You are a highly experienced Korean Contract Lawyer (변호사). 
     Review the provided contract materials (Images, PDFs, Text) as ONE complete document.
@@ -188,11 +195,12 @@ def review():
     {precedents_context}
     
     CRITICAL INSTRUCTIONS:
-    1. **USE PRECEDENTS:** If any clause contradicts the [RELEVANT LEGAL PRECEDENTS] provided above, mark it as 'CRITICAL RISK' and cite the source.
-    2. **EXHAUSTIVE SEARCH:** Find EVERY SINGLE clause that poses a risk.
-    3. **LOCATION TRACKING:** Identify WHERE the clause is (e.g., "제5조 2항").
-    4. **LANGUAGE:** All output MUST be in natural KOREAN (한국어).
-    5. **FORMAT:** Return ONLY ONE valid JSON object.
+    1. **USE PRECEDENTS:** Base your analysis on the provided <참고용_판례_데이터베이스>. 
+    2. **CITATION:** When citing, refer to them simply as "판례" or "관련 판례" (Do NOT output the tag '<참고용_판례_데이터베이스>' itself).
+    3. **EXHAUSTIVE SEARCH:** Find EVERY SINGLE clause that poses a risk.
+    4. **LOCATION TRACKING:** Identify WHERE the clause is (e.g., "제5조 2항").
+    5. **LANGUAGE:** All output MUST be in natural KOREAN (한국어).
+    6. **FORMAT:** Return ONLY ONE valid JSON object.
     
     OUTPUT JSON (No Markdown):
     {{
